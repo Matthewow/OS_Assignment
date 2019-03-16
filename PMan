@@ -1,0 +1,189 @@
+#include <iostream>
+#include <readline/readline.h>
+#include <readline/history.h>
+#include <stdio.h>
+#include <sys/types.h>
+#include <sys/wait.h>
+#include <unistd.h>
+#include <stdlib.h>
+#include <fstream>
+
+using namespace std;
+
+pid_t pid; //defining a pid of the current process.
+
+struct process{
+    pid_t pid;
+    string filename;
+    int flag=0;
+    // The process struct includes, pid, process name, and flag, where 0 represents "terminated", 1 represents "running",
+    //while 2 represents "stopped".
+};
+
+process currentProcess;
+
+void createNewProcess(pid_t p, string name){
+    // Creating a new process.
+    if (currentProcess.flag == 0) {
+        process temp;
+        temp.pid = p;
+        temp.filename = name;
+        temp.flag= 1;
+        currentProcess = temp;
+    }
+}
+
+
+void bgKill(){
+    // Kill a process
+    if (currentProcess.flag = 1 || currentProcess.flag == 2){
+        // If the process is running or stopped.
+        kill(currentProcess.pid, SIGTERM);
+        // Using "signal termination" command to kill the current process.
+        cout<<"Current process is killed successfully"<<endl;
+        return;
+    }
+    else{
+        cout<<"Kill command failed."<<endl;
+    }
+}
+
+
+void bgStop(){
+    // Stop a process
+    if (currentProcess.flag == 1){
+        //If the process is running.
+        currentProcess.flag = 2;
+        kill(currentProcess.pid,SIGSTOP);
+        //Using the "signal stop" command.
+        cout<< "The current process has been stopped."<<endl;
+
+        return;
+    }else if(currentProcess.flag == 0) {
+        cout << "The current process has been terminated" << endl;
+        return;
+    }
+    else if(currentProcess.flag == 2) {
+        cout << "The current process is not running" << endl;
+        return;
+    }
+    else
+        cout<< "Command failed"<<endl;
+
+}
+
+void bgStart(){
+    // Restart the process.
+    if (currentProcess.flag == 1){
+        cout<< "The current process has not been stopped."<<endl;
+        return;
+    }else if(currentProcess.flag == 0) {
+        cout << "The current process has been terminated" << endl;
+        return;
+    }
+    else if(currentProcess.flag == 2) {
+        // If the process is stopped.
+        kill(currentProcess.pid, SIGCONT);
+        currentProcess.flag = 1;
+        cout << "The current process is now running" << endl;
+        return;
+    }
+    else
+        cout<< "Command failed"<<endl;
+
+    cout << "please check the pid" << endl;
+}
+
+
+void checkStatus(){
+    // Check the status of child process.
+    pid = waitpid(-1, 0, WNOHANG);
+    while (pid > 0){
+        if (currentProcess.pid == pid){
+            cout << pid << "Completed." << endl;
+            currentProcess.flag = 0;
+            return;
+        }
+        pid = waitpid(-1, 0, WNOHANG);
+    }
+}
+
+
+
+void bg(){
+    checkStatus();
+    char *fname = strtok (NULL," ");
+    ifstream ifile(fname);
+    // Ready to read the demo.cpp
+    if (ifile) {
+        // Handle the prefix of fname.
+        string str = "./";
+        const char *font = str.c_str();
+        char buffer[256];
+        strncpy(buffer, font, sizeof(buffer));
+        strncat(buffer, fname, sizeof(buffer));
+
+        // Start child process
+        pid=fork();
+        if (pid == 0){
+            // it is a child process, execvp to run a new bg process
+            char *file = strdup(buffer);
+            char *argv[5];
+            argv[0] = file;
+            argv[1] = strtok (NULL," ");
+            argv[2] = strtok (NULL," ");
+            argv[3] = strtok (NULL," ");
+            argv[4] = NULL;
+            execvp(file, argv);
+        }else if (pid > 0){
+            createNewProcess(pid, string(fname));
+            cout << "BG command is called, a process is created with the pid = " << pid << endl;
+        }
+        else{// fork failed
+            cout<<"fork () failed!"<<endl;
+            exit (EXIT_FAILURE);
+        }
+    }else{
+        cout << "Can't find the file." << endl;
+    }
+}
+
+void processUserInput(){
+    // Handle reading the inputted commands.
+    char* input = NULL ;
+    char* command;
+    char* pidInput;
+    char prompt[] = "PMan:>";
+    input = readline(prompt);
+    command = strtok (input," ");
+    if (command == NULL){
+        cout<<"Nothing found.";
+        return;
+    }
+
+    // to detect the command and go to the branching functions.
+    if (strcmp(command, "bg") == 0){
+        bg();
+    }else if (strcmp(command, "bgkill") == 0){
+        bgKill();
+    }else if (strcmp(command, "bgstop") == 0){
+        bgStop();
+    }else if (strcmp(command, "bgstart") == 0){
+        bgStart();
+    }else if (strcmp(command, "exit") == 0){
+        bgKill();
+        exit (EXIT_SUCCESS);
+    }else{
+        cout << "Command can not be found" << endl;
+    }
+}
+
+int main(){
+
+    while(1){
+        processUserInput();
+    }
+
+    return 0;
+
+}
