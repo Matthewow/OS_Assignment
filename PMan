@@ -1,3 +1,9 @@
+//author: Matthew
+/*
+Here is a process manager which allows a program to be started in the background. It is just a very simple multiprocess case. While the program is running, it is still able to accept input from the user.
+This simple project can be run in Linux System, and it is implemented with C++.
+*/
+
 #include <iostream>
 #include <readline/readline.h>
 #include <readline/history.h>
