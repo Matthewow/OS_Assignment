@@ -1,0 +1,252 @@
+//aythor: Matthew
+/*
+For this program, user need to input two integers to indicate the time interval and the maximum tokens.
+The project is implemented by C++, and can be run in Linux environment.
+*/
+
+#include <iostream>
+#include <pthread.h>
+#include<unistd.h>
+#include <iomanip>
+#include <stdlib.h>
+#include <readline/readline.h>
+#include <readline/history.h>
+#include<string>
+using namespace std;
+
+#define MAX_SIZE 50 		//defining maximum size for Queue
+#define MAX 50
+
+// Declaring global variables
+int tokenNumber = 0;  			//no. of  the token generated
+int currentLength = 0;			//no. of current available tokens
+int tokenAdded;			// no. of tokens added by the Flow thread to queue
+int tokenDropped = 0;			// no. of tokens dropped due to overflow
+int MaxToken;				//User input for maximum tokens
+int totalToken=0;			//total tokens
+int flowInterval;				//User input for time interval of each token 						//generated
+pthread_mutex_t mutex;                	//declaring the mutex for the pthreads
+
+// Shared queue , defining the self-based queue class for the queue
+class queue
+{
+private:
+    int A[MAX_SIZE];
+    int front, rear;
+public:
+// Constructor - set front and rear as -1.
+// We are assuming that for an empty Queue, both front and rear will be -1.
+    queue()
+    {
+        front = -1;
+        rear = -1;
+    }
+
+// To check wheter Queue is empty or not
+    bool IsEmpty()
+    {
+        return (front == -1 && rear == -1);
+    }
+
+// To check whether Queue is full or not
+    bool IsFull()
+    {
+        return (rear+1)%MAX_SIZE == front ? true : false;
+    }
+
+// Inserts an element in queue at rear end
+    void push(int x)
+    {
+        if(IsFull())
+        {
+            cout<<"Error: Queue is Full\n";
+            return;
+        }
+        if (IsEmpty())
+        {
+            front = rear = 0;
+        }
+        else
+        {
+            rear = (rear+1)%MAX_SIZE;
+        }
+        A[rear] = x;
+    }
+
+// Removes an element in Queue from front end.
+    void pop()
+    {
+
+        if(IsEmpty())
+        {
+            cout<<"Error: Queue is Empty\n";
+            return;
+        }
+        else if(front == rear )
+        {
+            rear = front = -1;
+        }
+        else
+        {
+            front = (front+1)%MAX_SIZE;
+        }
+    }
+// Returns element at front of queue.
+    int Front()
+    {
+        if(front == -1)
+        {
+            cout<<"Error: cannot return front from empty queue\n";
+            return -1;
+        }
+        return A[front];
+    }
+/*
+   Printing the elements in queue from front to rear.
+*/
+    void Print()
+    {
+// Finding number of elements in queue
+        int count = (rear+MAX_SIZE-front)%MAX_SIZE + 1;
+        cout<<"Queue       : ";
+        for(int i = 0; i <count; i++)
+        {
+            int index = (front+i) % MAX_SIZE; // Index of element while travesing circularly from front
+            cout<<A[index]<<" ";
+        }
+        cout<<"\n\n";
+    }
+};
+
+queue Q;
+
+void* producerToken(void*) 			//function for generating the tokens
+{
+    currentLength = 0;
+    while (totalToken < MaxToken)		//Loop runs until totalToken in the queue is 						//less than the user inputted MaxToken
+    {
+
+        sleep(flowInterval);				//thread sleeps before generating token
+        tokenAdded = rand() % 10 + 1;			//random no. between 1 to 10
+
+        pthread_mutex_lock(&mutex);			//the thread is locked and enters critical sec
+        // Getting the lock on queue using mutex
+        for (int i = 0; i < tokenAdded; i++) {
+            if (currentLength < 50) {				//if current no.of token less than max, then 						//push the generated token
+                tokenNumber++;
+                Q.push(tokenNumber);
+                currentLength++;				//increase current no. of tokens
+                if (totalToken == MaxToken)
+                break;
+            }
+            else {
+                tokenDropped++;				//the token gets blocked
+            }
+        }
+        cout <<"    "<<tokenAdded;
+        cout<<setw(20)<<tokenNumber;
+        cout<<setw(20)<<currentLength<<endl;
+        pthread_mutex_unlock(&mutex); 		//once generation of token complete, lock 						//released
+    }
+    pthread_exit(NULL);
+}
+
+void* serverToken(void*)
+{
+    currentLength = 0;   			//current no. of tokens
+    int lowest = 1, highest = 20;		// to generate a random number between 1-20
+    int range = (lowest - highest) + 1;
+    int i;
+    int ThisTime;
+
+    while (totalToken < MaxToken)			//untiltotal no. of tokens less than 							//Maxtoken
+    {
+        sleep(2);					//sleep for 2 seconds before fetch
+        int randNum = lowest + rand() % range;
+
+        pthread_mutex_lock(&mutex);
+        ThisTime = 0;
+        if (currentLength >= randNum) 			//if tokens greater than generated drop all 						//generated tokens
+        {
+
+            for (i = 0;i < randNum; i++)
+            {
+                Q.pop();
+                currentLength--; //reduce the no. of available tokens
+                totalToken++;		//total tokens increased with the generated
+                ThisTime++;							//current tokens fetched
+                if (totalToken == MaxToken)
+                break;
+            }
+        }
+        else
+        {
+            for (i = 0;i < currentLength;i++)    		//drop all current tokens in queue
+            {
+                Q.pop();
+                currentLength--;
+                totalToken++;		//total tokens increased with the generated
+                ThisTime++;							//current tokens fetched
+                if (totalToken == MaxToken)
+                break;
+            }
+        }
+
+        cout <<setw(43)<<currentLength;
+        cout <<setw(20)<<ThisTime;
+        cout <<setw(20)<<totalToken<<endl;
+        pthread_mutex_unlock(&mutex);  		//unlock after fetching
+    }
+    pthread_exit(NULL); 				//exit server thread
+}
+
+bool isNumber(string s) 
+{ 
+    for (int i = 0; i < s.length(); i++) 
+        if ((isdigit(s[i]) == false)&&(s[i]!=' ')) 
+            return false; 
+    return true; 
+} 
+
+
+int main(int argc, char *argv[])
+{
+// Declaring integers used to
+// identify the thread in the system
+    pthread_t flowThread, serverThread;
+    pthread_mutex_init(&mutex, NULL);
+// Function to create a threads
+// (pthread_create() takes 4 arguments)
+// pthread_join suspends execution of the calling
+// thread until the target thread terminates
+    char* input = NULL;
+    char value[3];
+    char value1[3];
+    cout<<"Please input MAx tokens and the time interval, divided by space."<<endl;
+    
+    char prompt[] = "SFIFO:>";
+    input = readline(prompt);
+    if(!isNumber(input)){
+        cout<<"!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!"<<endl;
+        cout<<"!Input should be two integers with one space in between. Please redo it. !"<<endl;
+        cout<<"!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!"<<endl;
+        return 0;
+    }
+    
+    MaxToken = atoi(strcpy(value,strtok(input, " ")));
+    flowInterval = atoi(strcpy(value1,strtok(NULL, " ")));
+    cout<<"The MaxToken is "<<MaxToken<<" and the time interval is "<<flowInterval<< "."<<endl;
+
+    cout<<"Flow                                 Queue                          Server"<<endl;
+    cout<<"Token added  Latest sequence number  Current Length  Token fetched  Total Token fetched"<<endl;
+    pthread_create(&flowThread, NULL, producerToken, NULL);
+    pthread_create(&serverThread, NULL, serverToken, NULL);
+
+    pthread_join(flowThread, NULL);
+    pthread_join(serverThread, NULL);
+    cout<<"The total number of tokens that have been fetched by the server is "<<totalToken<<"."<<endl;
+    cout<<"The total number of tokens that have been generated by the flow is "<<totalToken + currentLength<<"."<<endl;
+    cout<<"The total number of tokens that have been dropped by the queue is "<<tokenDropped<<"."<<endl;
+
+    return 0;
+}
